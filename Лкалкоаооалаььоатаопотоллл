@@ -1,0 +1,196 @@
+import pygame
+import random
+import os
+import sys
+
+# --- ИНИЦИАЛИЗАЦИЯ ---
+try:
+    pygame.init()
+    pygame.font.init()
+except Exception as e:
+    print(f"Ошибка инициализации Pygame: {e}")
+
+WIDTH, HEIGHT = 400, 600
+FPS = 60
+
+# Цвета
+WHITE = (255, 255, 255)
+SKY_BLUE = (113, 197, 207)
+
+# Пытаемся создать окно
+try:
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Flappy Bird - Fixed")
+    clock = pygame.time.Clock()
+except Exception as e:
+    print(f"Не удалось создать окно: {e}")
+    sys.exit()
+
+# Шрифты
+font_large = pygame.font.SysFont('Arial', 48, bold=True)
+font_medium = pygame.font.SysFont('Arial', 32, bold=True)
+font_small = pygame.font.SysFont('Arial', 24)
+
+# --- ПУТИ К ФАЙЛАМ ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+IMG_DIR = os.path.join(BASE_DIR, 'assets', 'img')
+
+def load_image(filename, fallback_size, fallback_color):
+    path = os.path.join(IMG_DIR, filename)
+    if os.path.exists(path):
+        try:
+            img = pygame.image.load(path).convert_alpha()
+            img = pygame.transform.scale(img, fallback_size)
+            
+            # Быстрый способ убрать белый фон (без циклов)
+            # Мы берем цвет верхнего левого пикселя и делаем его прозрачным
+            colorkey = img.get_at((0,0))
+            img.set_colorkey(colorkey)
+            return img
+        except Exception as e:
+            print(f"Ошибка загрузки {filename}: {e}")
+    
+    # Если файла нет или ошибка — создаем цветной квадрат
+    surf = pygame.Surface(fallback_size)
+    surf.fill(fallback_color)
+    return surf
+
+# Размеры и текстуры
+BIRD_SIZE = (34, 24)
+PIPE_SIZE = (52, 500)
+
+BIRD_IMG = load_image('bird.png', BIRD_SIZE, (255, 255, 0))
+PIPE_IMG = load_image('pipe.png', PIPE_SIZE, (0, 255, 0))
+PIPE_IMG_FLIPPED = pygame.transform.flip(PIPE_IMG, False, True)
+
+# --- КЛАССЫ ОБЪЕКТОВ ---
+class Bird:
+    def __init__(self):
+        self.rect = pygame.Rect(50, HEIGHT // 2, BIRD_SIZE[0], BIRD_SIZE[1])
+        self.velocity = 0
+        self.gravity = 0.5
+        self.jump_strength = -8
+
+    def update(self):
+        self.velocity += self.gravity
+        self.rect.y += int(self.velocity)
+
+    def draw(self):
+        screen.blit(BIRD_IMG, self.rect)
+
+class Pipe:
+    def __init__(self, x):
+        self.x = x
+        self.gap = 160
+        self.width = PIPE_SIZE[0]
+        self.speed = 3
+        
+        # Высота
+        self.center_y = random.randint(150, HEIGHT - 150)
+        self.is_moving = random.random() < 0.33
+        self.move_dir = 1
+        self.move_speed = 1.5
+        self.start_y = self.center_y
+        
+        self.passed = False
+        self.update_rects()
+
+    def update_rects(self):
+        self.top_rect = pygame.Rect(self.x, self.center_y - self.gap//2 - PIPE_SIZE[1], self.width, PIPE_SIZE[1])
+        self.bottom_rect = pygame.Rect(self.x, self.center_y + self.gap//2, self.width, PIPE_SIZE[1])
+
+    def update(self):
+        self.x -= self.speed
+        if self.is_moving:
+            self.center_y += self.move_speed * self.move_dir
+            if abs(self.center_y - self.start_y) > 60:
+                self.move_dir *= -1
+        self.update_rects()
+
+    def draw(self):
+        screen.blit(PIPE_IMG_FLIPPED, self.top_rect)
+        screen.blit(PIPE_IMG, self.bottom_rect)
+
+# --- ГЛАВНЫЙ ЦИКЛ ---
+def game_loop():
+    bird = Bird()
+    pipes = [Pipe(WIDTH + 100)]
+    score = 0
+    game_over = False
+    
+    spawn_timer = 0
+
+    while True:
+        screen.fill(SKY_BLUE)
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE or event.key == pygame.K_UP:
+                    if not game_over:
+                        bird.velocity = bird.jump_strength
+                    else:
+                        return # Перезапуск
+
+        if not game_over:
+            bird.update()
+            
+            spawn_timer += 1
+            if spawn_timer > 90:
+                pipes.append(Pipe(WIDTH))
+                spawn_timer = 0
+
+            for pipe in pipes:
+                pipe.update()
+                
+                # Столкновения
+                if bird.rect.colliderect(pipe.top_rect) or bird.rect.colliderect(pipe.bottom_rect):
+                    game_over = True
+                
+                # Очки
+                if not pipe.passed and pipe.x < bird.rect.x:
+                    pipe.passed = True
+                    score += 1
+
+            # Удаление старых труб
+            pipes = [p for p in pipes if p.x > -100]
+
+            if bird.rect.bottom > HEIGHT or bird.rect.top < 0:
+                game_over = True
+
+        # Отрисовка
+        for pipe in pipes: pipe.draw()
+        bird.draw()
+
+        # Интерфейс
+        if game_over:
+            # Затемнение
+            overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 150))
+            screen.blit(overlay, (0,0))
+            
+            txt_msg = font_large.render("GAME OVER", True, WHITE)
+            txt_score = font_medium.render(f"Счет: {score}", True, (255, 215, 0))
+            txt_hint = font_small.render("Жми пробел для рестарта", True, WHITE)
+            
+            screen.blit(txt_msg, (WIDTH//2 - txt_msg.get_width()//2, 200))
+            screen.blit(txt_score, (WIDTH//2 - txt_score.get_width()//2, 260))
+            screen.blit(txt_hint, (WIDTH//2 - txt_hint.get_width()//2, 350))
+        else:
+            txt_s = font_large.render(str(score), True, WHITE)
+            screen.blit(txt_s, (WIDTH//2 - txt_s.get_width()//2, 50))
+
+        pygame.display.flip()
+        clock.tick(FPS)
+
+# Запуск с защитой от вылета
+if __name__ == "__main__":
+    while True:
+        try:
+            game_loop()
+        except Exception as e:
+            print(f"Критическая ошибка: {e}")
+            input("Нажми Enter чтобы закрыть...") # Чтобы окно не закрылось сразу
+            break
