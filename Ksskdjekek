@@ -1,0 +1,156 @@
+import pygame
+import random
+import sys
+import os
+
+# --- НАСТРОЙКИ ---
+WIDTH, HEIGHT = 400, 600
+BIRD_SIZE = 40
+PIPE_WIDTH = 60
+PIPE_GAP = 160
+GRAVITY = 0.25
+FLAP_STRENGTH = -6
+PIPE_SPEED = 3
+VERTICAL_SPEED = 2 
+MOVING_CHANCE = 0.3 # Шанс, что труба будет двигаться
+
+pygame.init()
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Flappy Bird по-русски")
+clock = pygame.time.Clock()
+
+# Функция для шрифтов
+def get_font(size):
+    return pygame.font.SysFont("Arial", size, bold=True)
+
+# --- ЗАГРУЗКА ТЕКСТУР ---
+# Путь к папке с картинками
+IMG_PATH = os.path.join("assets", "img")
+
+try:
+    BIRD_IMG = pygame.transform.scale(pygame.image.load(os.path.join(IMG_PATH, "bird.png")).convert_alpha(), (BIRD_SIZE, BIRD_SIZE))
+    PIPE_IMG = pygame.image.load(os.path.join(IMG_PATH, "pipe.png")).convert_alpha()
+    BG_IMG = pygame.transform.scale(pygame.image.load(os.path.join(IMG_PATH, "background.png")).convert(), (WIDTH, HEIGHT))
+except Exception as e:
+    print(f"Предупреждение: Текстуры не найдены в {IMG_PATH}. Используются заглушки. Ошибка: {e}")
+    BIRD_IMG = pygame.Surface((BIRD_SIZE, BIRD_SIZE)); BIRD_IMG.fill((255, 230, 0))
+    PIPE_IMG = pygame.Surface((PIPE_WIDTH, 500)); PIPE_IMG.fill((117, 190, 47))
+    BG_IMG = pygame.Surface((WIDTH, HEIGHT)); BG_IMG.fill((113, 197, 207))
+
+def show_game_over_menu(score):
+    overlay = pygame.Surface((WIDTH, HEIGHT))
+    overlay.set_alpha(180)
+    overlay.fill((0, 0, 0))
+    screen.blit(overlay, (0, 0))
+
+    font_big = get_font(50)
+    font_small = get_font(20)
+
+    msg_over = font_big.render("ИГРА ОКОНЧЕНА", True, (255, 50, 50))
+    msg_score = font_small.render(f"Ваш результат: {score}", True, (255, 255, 255))
+    msg_restart = font_small.render("Нажми ПРОБЕЛ, чтобы начать заново", True, (200, 200, 200))
+    msg_quit = font_small.render("Нажми ESC для выхода", True, (150, 150, 150))
+
+    screen.blit(msg_over, (WIDTH // 2 - msg_over.get_width() // 2, HEIGHT // 2 - 80))
+    screen.blit(msg_score, (WIDTH // 2 - msg_score.get_width() // 2, HEIGHT // 2))
+    screen.blit(msg_restart, (WIDTH // 2 - msg_restart.get_width() // 2, HEIGHT // 2 + 60))
+    screen.blit(msg_quit, (WIDTH // 2 - msg_quit.get_width() // 2, HEIGHT // 2 + 100))
+
+    pygame.display.flip()
+
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    return
+                if event.key == pygame.K_ESCAPE:
+                    pygame.quit()
+                    sys.exit()
+
+def run_game():
+    bird_rect = pygame.Rect(50, HEIGHT // 2, BIRD_SIZE, BIRD_SIZE)
+    bird_velocity = 0
+    pipes = [] 
+    score = 0
+    
+    SPAWN_PIPE = pygame.USEREVENT
+    pygame.time.set_timer(SPAWN_PIPE, 1500)
+
+    running = True
+    while running:
+        screen.blit(BG_IMG, (0, 0))
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    bird_velocity = FLAP_STRENGTH
+            if event.type == SPAWN_PIPE:
+                h = random.randint(150, 350)
+                direction = random.choice([-1, 1]) if random.random() < MOVING_CHANCE else 0
+                pipes.append({
+                    'top': pygame.Rect(WIDTH, h - 500, PIPE_WIDTH, 500),
+                    'bottom': pygame.Rect(WIDTH, h + PIPE_GAP, PIPE_WIDTH, 500),
+                    'dir': direction, 
+                    'base_y': h,
+                    'passed': False
+                })
+
+        bird_velocity += GRAVITY
+        bird_rect.y += bird_velocity
+
+        for p in pipes[:]:
+            p['top'].x -= PIPE_SPEED
+            p['bottom'].x -= PIPE_SPEED
+            
+            # Движение труб вверх-вниз
+            if p['dir'] != 0:
+                p['top'].y += p['dir'] * VERTICAL_SPEED
+                p['bottom'].y += p['dir'] * VERTICAL_SPEED
+                if abs((p['top'].bottom + PIPE_GAP // 2) - p['base_y']) > 50:
+                    p['dir'] *= -1
+
+            # Отрисовка труб
+            top_surf = pygame.transform.flip(PIPE_IMG, False, True)
+            screen.blit(pygame.transform.scale(top_surf, (PIPE_WIDTH, 500)), p['top'])
+            screen.blit(pygame.transform.scale(PIPE_IMG, (PIPE_WIDTH, 500)), p['bottom'])
+
+            # Проверка столкновений
+            if bird_rect.colliderect(p['top']) or bird_rect.colliderect(p['bottom']):
+                running = False
+
+            # Подсчет очков
+            if p['top'].right < bird_rect.left and not p['passed']:
+                score += 1
+                p['passed'] = True
+
+            # Удаление лишних труб
+            if p['top'].right < 0:
+                pipes.remove(p)
+
+        # Отрисовка птицы
+        rotated_bird = pygame.transform.rotate(BIRD_IMG, -bird_velocity * 3)
+        screen.blit(rotated_bird, bird_rect)
+
+        # Границы экрана
+        if bird_rect.top <= 0 or bird_rect.bottom >= HEIGHT:
+            running = False
+
+        # Счет
+        score_surf = get_font(40).render(str(score), True, (255, 255, 255))
+        screen.blit(score_surf, (WIDTH // 2 - score_surf.get_width() // 2, 50))
+
+        pygame.display.flip()
+        clock.tick(60)
+    
+    show_game_over_menu(score)
+
+# Главный цикл
+if __name__ == "__main__":
+    while True:
+        run_game()
