@@ -1,0 +1,66 @@
+import pygame
+import random
+import os
+import sys
+
+# Инициализация
+pygame.init()
+pygame.font.init()
+
+WIDTH, HEIGHT = 400, 600
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Flappy Bird - No More Mosaic")
+clock = pygame.time.Clock()
+FPS = 60
+
+# Цвета
+WHITE = (255, 255, 255)
+SKY_BLUE = (113, 197, 207)
+
+# Шрифты
+font_large = pygame.font.SysFont('Arial', 48, bold=True)
+font_medium = pygame.font.SysFont('Arial', 32, bold=True)
+font_small = pygame.font.SysFont('Arial', 24)
+
+# --- ЗАГРУЗКА АССЕТОВ С УМНЫМ ФИЛЬТРОМ ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+IMG_DIR = os.path.join(BASE_DIR, 'assets', 'img')
+
+def load_image(filename, fallback_size, fallback_color):
+    path = os.path.join(IMG_DIR, filename)
+    if os.path.exists(path):
+        # Загружаем картинку
+        img = pygame.image.load(path).convert_alpha()
+        img = pygame.transform.scale(img, fallback_size)
+        
+        # Создаем новую пустую поверхность с прозрачностью
+        new_img = pygame.Surface(img.get_size(), pygame.SRCALPHA)
+        
+        # Перебираем каждый пиксель и убираем "мозаику"
+        for x in range(img.get_width()):
+            for y in range(img.get_height()):
+                r, g, b, a = img.get_at((x, y))
+                
+                # Если пиксель слишком светлый (белый или светло-серый из мозаики)
+                # Порог 200 отсекает большинство видов фейковых прозрачностей
+                if r > 200 and g > 200 and b > 200:
+                    new_img.set_at((x, y), (0, 0, 0, 0)) # Делаем прозрачным
+                else:
+                    new_img.set_at((x, y), (r, g, b, a)) # Оставляем как есть
+                    
+        return new_img
+    else:
+        surf = pygame.Surface(fallback_size)
+        surf.fill(fallback_color)
+        return surf
+
+# Размеры и картинки
+BIRD_SIZE = (34, 24)
+PIPE_SIZE = (52, 500)
+
+BIRD_IMG = load_image('bird.png', BIRD_SIZE, (255, 255, 0))
+PIPE_IMG = load_image('pipe.png', PIPE_SIZE, (0, 255, 0))
+PIPE_IMG_FLIPPED = pygame.transform.flip(PIPE_IMG, False, True)
+
+# --- ДАЛЕЕ ИДЕТ ВЕСЬ ОСТАЛЬНОЙ КОД (Bird, Pipe, main) БЕЗ ИЗМЕНЕНИЙ ---
+# (Просто скопируй сюда классы и цикл из моего первого ответа)
